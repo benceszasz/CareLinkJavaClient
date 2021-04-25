@@ -1,0 +1,6 @@
+Manifest-Version: 1.0
+Main-Class: info.nightscout.medtronic.carelink.cli.CareLinkClientCLI
+Class-Path: annotations-13.0.jar commons-cli-1.4.jar gson-2.8.6.jar kotl
+ in-stdlib-1.4.10.jar kotlin-stdlib-common-1.4.10.jar okhttp-4.9.1.jar o
+ kio-2.8.0.jar okio-jvm-2.8.0.jar
+
