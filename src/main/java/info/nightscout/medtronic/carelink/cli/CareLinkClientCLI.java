@@ -10,7 +10,6 @@ import java.io.FileWriter;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
-import java.util.Date;
 
 public class CareLinkClientCLI {
 
@@ -24,6 +23,7 @@ public class CareLinkClientCLI {
     private static final String OPTION_WAIT = "w";
     private static final String OPTION_ANONYM = "a";
     private static final String OPTION_VERBOSE = "v";
+    private static final String OPTION_JSON_EXCEPTION = "j";
 
 
     private static Options generateOptions() {
@@ -120,6 +120,15 @@ public class CareLinkClientCLI {
                         .desc("Wait minutes between repeated calls.")
                         .build());
 
+        //j - Json exception
+        options.addOption(
+                Option.builder(OPTION_JSON_EXCEPTION)
+                        .required(false)
+                        .longOpt("jsonex")
+                        .hasArg(false)
+                        .desc("Dump response for data Json exception.")
+                        .build());
+
         return options;
 
     }
@@ -135,6 +144,7 @@ public class CareLinkClientCLI {
         boolean downloadRecentData;
         boolean verbose;
         boolean anonymize;
+        boolean dumpJsonException;
 
 
         Options options = generateOptions();
@@ -150,10 +160,11 @@ public class CareLinkClientCLI {
                 CommandLineParser parser = new DefaultParser();
                 CommandLine cmd = parser.parse(options, args);
                 //Set params
-                verbose = (cmd.hasOption(OPTION_VERBOSE)) ? true : false;
-                downloadSession = (cmd.hasOption(OPTION_SESSION)) ? true : false;
-                downloadRecentData = (cmd.hasOption(OPTION_DATA)) ? true : false;
-                anonymize = (cmd.hasOption(OPTION_ANONYM)) ? true : false;
+                verbose = cmd.hasOption(OPTION_VERBOSE);
+                downloadSession = cmd.hasOption(OPTION_SESSION);
+                downloadRecentData = cmd.hasOption(OPTION_DATA);
+                anonymize = cmd.hasOption(OPTION_ANONYM);
+                dumpJsonException = cmd.hasOption(OPTION_JSON_EXCEPTION);
                 folder = (cmd.hasOption(OPTION_OUTPUT)) ? cmd.getOptionValue(OPTION_OUTPUT) : null;
                 repeat = (cmd.hasOption(OPTION_REPEAT)) ? Integer.parseInt(cmd.getOptionValue(OPTION_REPEAT)) : 1;
                 wait = (cmd.hasOption(OPTION_WAIT)) ? Integer.parseInt(cmd.getOptionValue(OPTION_WAIT)) : 1;
@@ -164,12 +175,10 @@ public class CareLinkClientCLI {
                         downloadSession, downloadRecentData,
                         anonymize,
                         folder,
-                        repeat, wait);
-            } catch (MissingOptionException exMiss) {
-                System.out.println(exMiss.getMessage());
-                System.out.println("Run without options to get usage info!");
-            } catch (UnrecognizedOptionException exUnrec) {
-                System.out.println(exUnrec.getMessage());
+                        repeat, wait,
+                        dumpJsonException);
+            } catch (MissingOptionException| UnrecognizedOptionException  exOption) {
+                System.out.println(exOption.getMessage());
                 System.out.println("Run without options to get usage info!");
             } catch (Exception ex) {
                 System.out.println(ex.getMessage());
@@ -179,9 +188,10 @@ public class CareLinkClientCLI {
 
     }
 
-    private static void callCareLinkClient(boolean verbose, String username, String password, String country, Boolean downloadSessionInfo, Boolean downloadData, boolean anonymize, String folder, int repeat, int wait){
+    private static void callCareLinkClient(boolean verbose, String username, String password, String country, Boolean downloadSessionInfo, Boolean downloadData, boolean anonymize, String folder, int repeat, int wait, boolean dumpJsonException){
 
         CareLinkClient client = null;
+        RecentData recentData = null;
 
         client = new CareLinkClient(username, password, country);
         if(verbose)printLog("Client created!");
@@ -201,14 +211,29 @@ public class CareLinkClientCLI {
                 if(downloadData) {
                     try {
                         for(int j = 0; j < 2; j++) {
-                            writeJson(client.getRecentData(), folder, "data", anonymize, verbose);
-                            //writeResponse(client.getLastResponseBody(), folder, "dataresponse");
+                            recentData = client.getRecentData();
+                            //Auth error
                             if(client.getLastResponseCode() == 401) {
                                 printLog("GetRecentData login error (response code 401). Trying again in 1 sec!");
                                 Thread.sleep(1000);
                             }
-                            else {
+                            //Get success
+                            else if(client.getLastResponseCode() == 200) {
+                                //Data OK
+                                if(client.getLastDataSuccess()) {
+                                    writeJson(recentData, folder, "data", anonymize, verbose);
+                                //Data error
+                                } else {
+                                    printLog("Data exception: " + (client.getLastErrorMessage() == null ? "no details available" : client.getLastErrorMessage()));
+                                    if(dumpJsonException){
+                                        writeFile(client.getLastResponseBody(), folder, "dataex", verbose);
+                                    }
+                                }
+                                //STOP!!!
                                 break;
+                            } else  {
+                                printLog("Error, response code: " + String.valueOf(client.getLastResponseCode()) + " Trying again in 1 sec!");
+                                Thread.sleep(1000);
                             }
                         }
                     } catch (Exception ex) {
@@ -231,22 +256,17 @@ public class CareLinkClientCLI {
 
     protected static void writeJson(Object object, String folder, String name, boolean anonymize, boolean verbose){
 
-        FileWriter writer = null;
-        SimpleDateFormat sdfDate = new SimpleDateFormat("yyyyMMdd_HHmmss");
-        String filename = name + "-" + sdfDate.format(Calendar.getInstance().getTime()) + ".json";
+        String content;
 
-        if(anonymize)
+        //Anonymize data
+        if(anonymize) {
             anonymizeData(object);
+        }
 
+        //Convert JSON to string and write to file
         try {
-            if(folder == null)
-                writer = new FileWriter(filename);
-            else
-                writer = new FileWriter(Paths.get(folder, filename).toAbsolutePath().toString());
-            new GsonBuilder().setDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX").setPrettyPrinting().create().toJson(object, writer);
-            writer.flush();
-            writer.close();
-            if (verbose) printLog(name + " saved!");
+            content = new GsonBuilder().setDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX").setPrettyPrinting().create().toJson(object);
+            writeFile(content, folder, name, verbose);
         } catch (Exception ex) {
             printLog("Error during save of " + name + " . Details: " + ex.getClass().getName() + " - " + ex.getMessage());
         }
@@ -254,7 +274,7 @@ public class CareLinkClientCLI {
     }
 
 
-    protected static void writeResponse(String response, String folder, String name){
+    protected static void writeFile(String content, String folder, String name, boolean verbose){
 
         FileWriter writer = null;
         SimpleDateFormat sdfDate = new SimpleDateFormat("yyyyMMdd_HHmmss");
@@ -265,9 +285,10 @@ public class CareLinkClientCLI {
                 writer = new FileWriter(filename);
             else
                 writer = new FileWriter(Paths.get(folder, filename).toAbsolutePath().toString());
-            writer.write(response);
+            writer.write(content);
             writer.flush();
             writer.close();
+            if (verbose) printLog(name + " saved!");
         } catch (Exception ex) {
             printLog("Error during save of " + name + " . Details: " + ex.getClass().getName() + " - " + ex.getMessage());
         }

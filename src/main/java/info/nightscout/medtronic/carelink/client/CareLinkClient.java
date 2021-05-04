@@ -156,6 +156,7 @@ public class CareLinkClient {
 
         lastLoginSuccess = false;
         loginInProcess = true;
+        lastErrorMessage = null;
 
         try {
             // Clear cookies
@@ -428,6 +429,7 @@ public class CareLinkClient {
         Object data = null;
 
         this.lastDataSuccess = false;
+        this.lastErrorMessage = null;
 
         // Get auth token
         String authToken = this.getAuthorizationToken();
