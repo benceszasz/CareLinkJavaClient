@@ -122,7 +122,7 @@ public class CareLinkClient {
 
         // Force login to get basic info
         if(getAuthorizationToken() != null) {
-            if (CountryUtils.isUS(carelinkCountry) || sessionMonitorData.isBleX())
+            if (CountryUtils.isUS(carelinkCountry) || sessionMonitorData.isBle())
                 return this.getConnectDisplayMessage(this.sessionProfile.username, this.sessionUser.getUserRole(),
                         sessionCountrySettings.blePereodicDataEndpoint);
             else
@@ -156,6 +156,7 @@ public class CareLinkClient {
 
         lastLoginSuccess = false;
         loginInProcess = true;
+        lastErrorMessage = null;
 
         try {
             // Clear cookies
@@ -428,6 +429,7 @@ public class CareLinkClient {
         Object data = null;
 
         this.lastDataSuccess = false;
+        this.lastErrorMessage = null;
 
         // Get auth token
         String authToken = this.getAuthorizationToken();

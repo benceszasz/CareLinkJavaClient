@@ -6,6 +6,12 @@ Java library, which can be used for retrieving data from Medtronic CareLink of o
 ## Status
 **The development is in a very early stage!**
 
+## Supported devices
+- Medtronic Guardian Connect CGM
+- Medtronic MiniMed 770G pump
+- Medtronic MiniMed 780G pump
+- Other Medtronic MiniMed 7xxG pumps???
+
 ## Features
 - Login to CareLink and provide access token for CareLink API calls 
 - Some basic CareLink APIs: get user data, get user profile, get country settings, get last 24 hours, get recent data from CareLink Cloud
