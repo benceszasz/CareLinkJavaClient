@@ -13,7 +13,14 @@ public class SimpleOkHttpCookieJar implements CookieJar {
 
     @Override
     public void saveFromResponse(HttpUrl url, List<Cookie> cookies) {
-        storage.addAll(cookies);
+
+        // Replace cookie if already exists
+        for (Cookie cookie : cookies) {
+            if (contains(cookie.name())) {
+                deleteCookie(cookie.name());
+            }
+            storage.add(cookie);
+        }
     }
 
     @Override
@@ -58,7 +65,7 @@ public class SimpleOkHttpCookieJar implements CookieJar {
 
     public void deleteCookie(String name) {
         for (int i = 0; i < storage.size(); i++) {
-            if(storage.get(i).name() == name) {
+            if(storage.get(i).name().equals(name)) {
                 storage.remove(i);
             }
         }
