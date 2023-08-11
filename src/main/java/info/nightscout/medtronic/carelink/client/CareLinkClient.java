@@ -16,10 +16,15 @@ public class CareLinkClient {
 
     protected static final String CARELINK_CONNECT_SERVER_EU = "carelink.minimed.eu";
     protected static final String CARELINK_CONNECT_SERVER_US = "carelink.minimed.com";
+    protected static final String CARELINK_LOGIN_SERVER_EU   = "mdtlogin-ocl.medtronic.com";
+    protected static final String CARELINK_LOGIN_SERVER_US   = "mdtlogin.medtronic.com";
+
     protected static final String CARELINK_LANGUAGE_EN = "en";
     protected static final String CARELINK_LOCALE_EN = "en";
-    protected static final String CARELINK_AUTH_TOKEN_COOKIE_NAME = "auth_tmp_token";
-    protected static final String CARELINK_TOKEN_VALIDTO_COOKIE_NAME = "c_token_valid_to";
+    public static final    String CARELINK_AUTH_TOKEN_COOKIE_NAME =    "auth_tmp_token";
+    public static final    String CARELINK_TOKEN_VALIDTO_COOKIE_NAME = "c_token_valid_to";
+    protected static final String CARELINK_AUTH_PATH_SEGMENT =  "patient/sso/reauth";
+    protected static final String CARELINK_LOGIN_PATH_SEGMENT = "patient/sso/login";
     protected static final int AUTH_EXPIRE_DEADLINE_MINUTES = 1;
 
     //Authentication data
@@ -71,7 +76,7 @@ public class CareLinkClient {
         } catch (Exception ex){}
     }
     protected void setLastResponseBody(String responseBody){
-            this.lastResponseBody = responseBody;
+        this.lastResponseBody = responseBody;
     }
     public String getLastResponseBody(){
         return lastResponseBody;
@@ -137,9 +142,13 @@ public class CareLinkClient {
 
     // Get server URL
     protected String careLinkServer() {
-       return this.carelinkCountry.equals("us") ? CARELINK_CONNECT_SERVER_US : CARELINK_CONNECT_SERVER_EU;
+        return this.carelinkCountry.equals("us") ? CARELINK_CONNECT_SERVER_US : CARELINK_CONNECT_SERVER_EU;
     }
 
+    // Get login server URL
+    protected String careLinkLoginServer() {
+        return this.carelinkCountry.equals("us") ? CARELINK_LOGIN_SERVER_US : CARELINK_LOGIN_SERVER_EU;
+    }
 
     // Authentication methods
     public boolean login(){
@@ -216,7 +225,7 @@ public class CareLinkClient {
         HttpUrl url = null;
         Request.Builder requestBuilder = null;
 
-        url = new HttpUrl.Builder().scheme("https").host(this.careLinkServer()).addPathSegments("patient/sso/login")
+        url = new HttpUrl.Builder().scheme("https").host(this.careLinkServer()).addPathSegments(CARELINK_LOGIN_PATH_SEGMENT)
                 .addQueryParameter("country", this.carelinkCountry).addQueryParameter("lang", CARELINK_LANGUAGE_EN)
                 .build();
 
@@ -244,7 +253,7 @@ public class CareLinkClient {
                 .add("actionButton", "Log in")
                 .build();
 
-        url = new HttpUrl.Builder().scheme("https").host("mdtlogin.medtronic.com")
+        url = new HttpUrl.Builder().scheme("https").host(this.careLinkLoginServer())
                 .addPathSegments("mmcl/auth/oauth/v2/authorize/login").addQueryParameter("locale", CARELINK_LOCALE_EN)
                 .addQueryParameter("country", this.carelinkCountry).build();
 
@@ -284,6 +293,50 @@ public class CareLinkClient {
 
     }
 
+    protected void getNewAuthorizationToken() {
+
+        // Get existing auth token
+        String authToken = ((SimpleOkHttpCookieJar) httpClient.cookieJar()).getCookies(CARELINK_AUTH_TOKEN_COOKIE_NAME).get(0).value();
+
+        if (authToken != null) {
+
+            authToken = "Bearer" + " " + authToken;
+
+            Response reauthResponse = null;
+            Request.Builder requestBuilder = null;
+
+            HttpUrl url = new HttpUrl.Builder().scheme("https").host(this.careLinkServer())
+                    .addPathSegments(CARELINK_AUTH_PATH_SEGMENT).addQueryParameter("locale", CARELINK_LOCALE_EN)
+                    .addQueryParameter("country", this.carelinkCountry).build();
+
+            // Create request for URL with authToken
+            requestBuilder = new Request.Builder().url(url).addHeader("Authorization", authToken);
+
+            RequestBody requestBody = null;
+            Gson gson = null;
+            JsonObject userJson = null;
+
+            // Build user json for request
+            userJson = new JsonObject();
+            gson = new GsonBuilder().create();
+
+            requestBody = RequestBody.create(gson.toJson(userJson), MediaType.get("application/json; charset=utf-8"));
+
+            requestBuilder.post(requestBody);
+            this.addHttpHeaders(requestBuilder, RequestType.HtmlPost);
+
+            try {
+                reauthResponse = this.httpClient.newCall(requestBuilder.build()).execute();
+            }
+            catch (IOException e) {
+                lastErrorMessage = e.getMessage();
+            }
+            finally {
+                reauthResponse.close();
+            }
+        }
+    }
+
     protected String getAuthorizationToken() {
 
         // New token is needed:
@@ -297,10 +350,12 @@ public class CareLinkClient {
                         + AUTH_EXPIRE_DEADLINE_MINUTES * 60000)))
                 || this.lastResponseCode == 401
         ) {
-            //execute new login process | null, if error OR already doing login
-            if(this.loginInProcess || !this.executeLoginProcedure())
-                return null;
 
+            //execute new login process | null, if error OR already doing login
+            if(this.loginInProcess)
+                return null;
+            else
+                getNewAuthorizationToken();
         }
 
         // there can be only one
